@@ -13,6 +13,19 @@ export const generateTicket = async (message) => {
     return res.json();
 };
 
+export const generateTicketsFromImage = async (imageFile) => {
+
+    const formData = new FormData();
+    formData.append("file", imageFile);
+
+    const res = await fetch(`${API_BASE}/generate-tickets-from-image`, {
+        method: "POST",
+        body: formData,
+    });
+
+    return res.json();
+};
+
 export const fetchCategories = async () => {
 
     const res = await fetch(`${API_BASE}/categories`);

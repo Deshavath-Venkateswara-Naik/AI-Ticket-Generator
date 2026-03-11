@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File
 from app.schemas.ticket_schema import MessageInput
 from app.services.llm_service import extract_ticket_fields
+from app.services.ocr_service import extract_text_from_image, split_into_tickets
 from app.utils.categories import ALLOWED_CATEGORIES
 import json
 import re
@@ -38,13 +39,54 @@ def _validate_category(category: str | None) -> str:
     return "platform_tech_issue"
 
 
-@router.post("/generate-ticket")
-def generate_ticket(data: MessageInput):
-    raw = extract_ticket_fields(data.message)
+def _process_ticket_text(text: str) -> dict:
+    """Run LLM extraction on a single ticket text and validate the category."""
+    raw = extract_ticket_fields(text)
     cleaned = _strip_markdown_fences(raw)
     result = json.loads(cleaned)
     result["category"] = _validate_category(result.get("category"))
     return result
+
+
+@router.post("/generate-ticket")
+def generate_ticket(data: MessageInput):
+    return _process_ticket_text(data.message)
+
+
+@router.post("/generate-tickets-from-image")
+async def generate_tickets_from_image(file: UploadFile = File(...)):
+    """Accept an image upload, run OCR, split into tickets, extract fields."""
+    image_bytes = await file.read()
+
+    # Step 1: OCR
+    ocr_text = extract_text_from_image(image_bytes)
+
+    # Step 2: Split into individual ticket blocks
+    ticket_blocks = split_into_tickets(ocr_text)
+
+    # Step 3: Extract fields from each block via the LLM
+    tickets = []
+    for block in ticket_blocks:
+        try:
+            ticket = _process_ticket_text(block)
+            ticket["_source_text"] = block
+            tickets.append(ticket)
+        except Exception:
+            tickets.append({
+                "name": None,
+                "email": None,
+                "phone": None,
+                "issue": block,
+                "category": "platform_tech_issue",
+                "_source_text": block,
+                "_error": "Failed to parse this ticket block",
+            })
+
+    return {
+        "ocr_text": ocr_text,
+        "ticket_count": len(tickets),
+        "tickets": tickets,
+    }
 
 
 @router.get("/categories")
