@@ -11,9 +11,9 @@ def extract_ticket_fields(message):
     categories_str = "\n".join(f"  - {cat}" for cat in ALLOWED_CATEGORIES)
 
     prompt = f"""
-Extract ticket information from the following message.
+Extract ticket information from the following message. If the message contains multiple distinct issues or requests, extract EACH as a separate ticket.
 
-Fields to extract:
+Fields for each ticket:
 - name
 - email
 - phone
@@ -26,8 +26,9 @@ ALLOWED CATEGORIES (pick the single best match):
 IMPORTANT: The "category" field MUST be exactly one value from the list above.
 Do NOT invent new categories. If unsure, pick the closest match.
 
-Return valid JSON only, with keys: name, email, phone, issue, category.
-If a field cannot be determined from the message, set its value to null.
+Return valid JSON with a single key "tickets", which is a list of ticket objects.
+Each ticket object must have keys: name, email, phone, issue, category.
+If a field cannot be determined for a ticket, set its value to null.
 
 Message:
 {message}

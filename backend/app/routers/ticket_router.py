@@ -42,18 +42,40 @@ def _validate_category(category: str | None) -> str:
     return "platform_tech_issue"
 
 
-def _process_ticket_text(text: str) -> dict:
-    """Run LLM extraction on a single ticket text and validate the category."""
+def _process_ticket_text(text: str) -> list[dict]:
+    """Run LLM extraction on a single ticket text and validate the category for each result."""
     raw = extract_ticket_fields(text)
     cleaned = _strip_markdown_fences(raw)
-    result = json.loads(cleaned)
-    result["category"] = _validate_category(result.get("category"))
-    return result
+    try:
+        data = json.loads(cleaned)
+        # LLM now returns {"tickets": [...]}
+        tickets = data.get("tickets", [])
+        if not isinstance(tickets, list):
+            # Fallback for unexpected format
+            tickets = [data] if data else []
+        
+        for ticket in tickets:
+            ticket["category"] = _validate_category(ticket.get("category"))
+        return tickets
+    except Exception as e:
+        print(f"Error parsing LLM JSON: {e}")
+        raise e
 
 
 @router.post("/generate-ticket")
 def generate_ticket(data: MessageInput):
-    return _process_ticket_text(data.message)
+    """Generate a single ticket (or the first of many) from a text message."""
+    tickets = _process_ticket_text(data.message)
+    if not tickets:
+        return {
+            "name": None,
+            "email": None,
+            "phone": None,
+            "issue": data.message,
+            "category": "platform_tech_issue"
+        }
+    # For the text/voice input, we typically expect one ticket, so return the first.
+    return tickets[0]
 
 
 @router.post("/generate-tickets-from-image")
@@ -71,9 +93,10 @@ async def generate_tickets_from_image(file: UploadFile = File(...)):
     tickets = []
     for block in ticket_blocks:
         try:
-            ticket = _process_ticket_text(block)
-            ticket["_source_text"] = block
-            tickets.append(ticket)
+            extracted_list = _process_ticket_text(block)
+            for ticket in extracted_list:
+                ticket["_source_text"] = block
+                tickets.append(ticket)
         except Exception:
             tickets.append({
                 "name": None,
@@ -114,7 +137,11 @@ async def generate_ticket_audio(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
         
         transcript = transcribe_audio(temp_file_path)
-        ticket_data = _process_ticket_text(transcript)
+        tickets = _process_ticket_text(transcript)
+        ticket_data = tickets[0] if tickets else {
+            "name": None, "email": None, "phone": None, 
+            "issue": transcript, "category": "platform_tech_issue"
+        }
         ticket_data["_transcript"] = transcript
 
         print(f"Success: Ticket generated from audio.")
