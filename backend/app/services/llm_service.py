@@ -8,7 +8,6 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def extract_ticket_fields(message):
-
     categories_str = "\n".join(f"  - {cat}" for cat in ALLOWED_CATEGORIES)
 
     prompt = f"""
@@ -33,10 +32,38 @@ If a field cannot be determined from the message, set its value to null.
 Message:
 {message}
 """
+    
+    print("\n--- [BACKEND] Extracting Ticket Fields ---")
+    print(f"Prompt length: {len(prompt)} characters")
+    print(f"Extracting from message: {message[:100]}...")
 
-    response = client.responses.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
-        input=prompt
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that extracts ticket information into JSON format."},
+            {"role": "user", "content": prompt}
+        ]
     )
 
-    return response.output_text
+    result = response.choices[0].message.content
+    print("LLM Response received.")
+    print(f"Raw Output: {result}")
+    print("--- [BACKEND] Extraction Complete ---\n")
+    return result
+
+
+def transcribe_audio(audio_file_path: str) -> str:
+    """Transcribe an audio file using OpenAI Whisper API."""
+    print(f"\n--- [BACKEND] Transcribing Audio: {audio_file_path} ---")
+    try:
+        with open(audio_file_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        print(f"Transcription result: {transcript.text[:100]}...")
+        print("--- [BACKEND] Transcription Complete ---\n")
+        return transcript.text
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        raise e
