@@ -1,27 +1,47 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+// @source "../src"
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+    Plus,
+    Image as ImageIcon,
+    Mic,
+    Type,
+    User as UserIcon,
+    Settings,
+    HelpCircle,
+    Search,
+    Trash2,
+    Loader2,
+    Sparkles,
+    ChevronRight,
+    Upload,
+    Play,
+    Square,
+    Pause,
+    RefreshCcw,
+    Terminal
+} from "lucide-react";
 import { generateTicket, generateTicketsFromImage, fetchCategories, generateTicketFromAudio } from "../services/api";
 import { useWhisper } from "../hooks/useWhisper";
+import ResultCard from "./ResultCard";
 
-function TicketGenerator() {
-
-    const [message, setMessage] = useState("");
+export default function TicketGenerator() {
+    const [mode, setMode] = useState(null); // null | "text" | "image" | "voice"
     const [operatorName, setOperatorName] = useState("");
+    const [message, setMessage] = useState("");
     const [ticket, setTicket] = useState(null);
     const [tickets, setTickets] = useState([]);
     const [categories, setCategories] = useState([]);
-    const [selectedCategory, setSelectedCategory] = useState("");
     const [ocrText, setOcrText] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [mode, setMode] = useState("text"); // "text" | "image" | "voice"
+    const [isBackendTranscribing, setIsBackendTranscribing] = useState(false);
     const fileInputRef = useRef(null);
 
-    // Browser Whisper hook (for recording and optional local transcribe)
     const {
         isRecording,
         isPaused,
-        isTranscribing: isLocalTranscribing,
         transcript,
         setTranscript,
         audioBlob,
@@ -31,8 +51,6 @@ function TicketGenerator() {
         resumeRecording,
         clearTranscript,
     } = useWhisper();
-
-    const [isBackendTranscribing, setIsBackendTranscribing] = useState(false);
 
     useEffect(() => {
         fetchCategories().then(setCategories).catch(console.error);
@@ -45,7 +63,6 @@ function TicketGenerator() {
         try {
             const data = await generateTicket(message);
             setTicket(data);
-            setSelectedCategory(data.category || "");
         } catch (err) {
             console.error(err);
         } finally {
@@ -53,36 +70,27 @@ function TicketGenerator() {
         }
     };
 
-    // Explicit Transcription Button Handler (Calls Backend API)
     const handleTranscribeAction = async () => {
         if (!audioBlob) return;
         setIsBackendTranscribing(true);
         setTicket(null);
         try {
-            // New API that takes audio and returns both transcript + generated ticket
             const data = await generateTicketFromAudio(audioBlob);
-            if (data._transcript) {
-                setTranscript(data._transcript);
-            }
-            if (data.name || data.issue) {
-                setTicket(data);
-                setSelectedCategory(data.category || "");
-            }
+            if (data._transcript) setTranscript(data._transcript);
+            if (data.name || data.issue) setTicket(data);
         } catch (err) {
-            console.error("Transcription/Generation failed:", err);
+            console.error(err);
         } finally {
             setIsBackendTranscribing(false);
         }
     };
 
-    // Explicit Generate Button Handler (Uses current transcript text)
     const handleGenerateFromTranscript = async () => {
         if (!transcript.trim()) return;
         setLoading(true);
         try {
             const data = await generateTicket(transcript);
             setTicket(data);
-            setSelectedCategory(data.category || "");
         } catch (err) {
             console.error(err);
         } finally {
@@ -133,329 +141,322 @@ function TicketGenerator() {
         setOcrText("");
     };
 
+    const menuItems = [
+        { id: "text", label: "Text Extraction", icon: Type, description: "Extract from raw messages", color: "bg-red-50 text-red-600" },
+        { id: "image", label: "Image Scan", icon: ImageIcon, description: "Extract from screenshots", color: "bg-orange-50 text-orange-600" },
+        { id: "voice", label: "Audio Record", icon: Mic, description: "Extract from voice", color: "bg-blue-50 text-blue-600" },
+    ];
+
     return (
-        <div className="min-h-screen bg-[#f7f8fc] flex justify-center items-start pt-10 pb-10">
-
-            <div className="w-full max-w-2xl px-4">
-
-                {/* Header */}
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-2 h-6 rounded-full bg-gradient-to-b from-red-500 to-red-300"></div>
-                    <h1 className="text-xl font-bold text-gray-800">
-                        Turito Quick Ticket
-                    </h1>
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+            {/* Header */}
+            <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-50">
+                <div
+                    className="flex items-center gap-3 cursor-pointer group"
+                    onClick={() => setMode(null)}
+                >
+                    <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center group-hover:rotate-12 transition-transform shadow-lg shadow-red-200">
+                        <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <span className="text-red-600 font-extrabold text-xl tracking-tight block">Turito AI</span>
+                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none">Extraction Hub</span>
+                    </div>
                 </div>
 
-                {/* Card */}
-                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-
-                    <h2 className="font-semibold text-gray-800 mb-2">
-                        Step 1 - Basic Input
-                    </h2>
-
-                    <p className="text-sm text-gray-500 mb-5">
-                        Type a message, upload an image, or speak. AI will extract ticket details automatically.
-                    </p>
-
-                    {/* Mode Toggle */}
-                    <div className="flex gap-2 mb-5 flex-wrap">
-                        {[
-                            { key: "text", label: "✏️ Text Input" },
-                            { key: "image", label: "📷 Image Upload" },
-                            { key: "voice", label: "🎤 Voice (Audio API)" },
-                        ].map(({ key, label }) => (
-                            <button
-                                key={key}
-                                onClick={() => switchMode(key)}
-                                className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${mode === key
-                                    ? "bg-red-500 text-white"
-                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                    }`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Operator Name */}
-                    <div className="mb-4">
-                        <label className="text-sm text-gray-600 block mb-1">
-                            Operator Name
-                        </label>
-
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-200">
+                        <div className="w-8 h-8 bg-white border border-slate-200 text-red-600 rounded-full flex items-center justify-center font-bold text-xs shadow-sm">
+                            {operatorName ? operatorName[0].toUpperCase() : <UserIcon size={14} />}
+                        </div>
                         <input
                             type="text"
-                            placeholder="e.g. Riya Sharma"
                             value={operatorName}
                             onChange={(e) => setOperatorName(e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-400"
+                            placeholder="RM Name..."
+                            className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none placeholder:text-slate-400 w-24"
                         />
                     </div>
-
-                    {/* ─── TEXT MODE ─── */}
-                    {mode === "text" && (
-                        <>
-                            <div className="mb-4">
-                                <label className="text-sm text-gray-600 block mb-1">
-                                    Simple Message
-                                </label>
-                                <textarea
-                                    rows="4"
-                                    placeholder="Customer abc@email.com is facing login issue..."
-                                    value={message}
-                                    onChange={(e) => setMessage(e.target.value)}
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-400"
-                                />
-                            </div>
-
-                            <button
-                                onClick={handleGenerate}
-                                disabled={loading || !message.trim()}
-                                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold px-6 py-2 rounded-full transition"
-                            >
-                                {loading ? "Generating..." : "Generate Ticket Fields"}
-                            </button>
-                        </>
-                    )}
-
-                    {/* ─── IMAGE MODE ─── */}
-                    {mode === "image" && (
-                        <>
-                            <div className="mb-4">
-                                <label className="text-sm text-gray-600 block mb-1">
-                                    Upload Image (screenshot, photo of a ticket, etc.)
-                                </label>
-
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={handleImageUpload}
-                                        className="text-sm file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:font-semibold file:bg-red-50 file:text-red-600 hover:file:bg-red-100 cursor-pointer"
-                                    />
-                                    {imageFile && (
-                                        <button
-                                            onClick={clearImage}
-                                            className="text-xs text-gray-400 hover:text-red-500 transition"
-                                        >
-                                            ✕ Clear
-                                        </button>
-                                    )}
-                                </div>
-
-                                {imagePreview && (
-                                    <img
-                                        src={imagePreview}
-                                        alt="Preview"
-                                        className="mt-3 rounded-lg border border-gray-200 max-h-52 object-contain"
-                                    />
-                                )}
-                            </div>
-
-                            <button
-                                onClick={handleImageGenerate}
-                                disabled={loading || !imageFile}
-                                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold px-6 py-2 rounded-full transition"
-                            >
-                                {loading ? "Processing Image..." : "Extract Tickets from Image"}
-                            </button>
-                        </>
-                    )}
-
-                    {/* ─── VOICE MODE (Manual Controls) ─── */}
-                    {mode === "voice" && (
-                        <div className="flex flex-col items-center py-6 bg-white rounded-2xl border border-gray-100 shadow-lg overflow-hidden">
-
-                            <div className="w-full bg-gradient-to-r from-red-500 to-red-400 py-4 px-6 mb-8 text-center text-white">
-                                <h3 className="font-bold text-lg">Granular Voice Command</h3>
-                                <p className="text-[10px] opacity-80 uppercase tracking-widest">Manual Control Center</p>
-                            </div>
-
-                            {/* Control Panel */}
-                            <div className="grid grid-cols-2 gap-4 w-full max-w-md px-8">
-
-                                {/* Start / Stop Button */}
-                                {!isRecording ? (
-                                    <button
-                                        onClick={startRecording}
-                                        className="flex flex-col items-center justify-center p-4 bg-red-50 hover:bg-red-100 rounded-2xl border-2 border-red-200 transition-all group"
-                                    >
-                                        <span className="text-3xl mb-1 group-hover:scale-110 transition-transform">🎤</span>
-                                        <span className="text-[10px] font-bold text-red-600 uppercase">Start Voice</span>
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={stopRecording}
-                                        className="flex flex-col items-center justify-center p-4 bg-gray-800 hover:bg-black rounded-2xl border-2 border-gray-700 transition-all group"
-                                    >
-                                        <span className="text-3xl mb-1 group-hover:scale-110 transition-transform">⏹️</span>
-                                        <span className="text-[10px] font-bold text-white uppercase">Stop Voice</span>
-                                    </button>
-                                )}
-
-                                {/* Pause / Resume Button */}
-                                <button
-                                    onClick={isPaused ? resumeRecording : pauseRecording}
-                                    disabled={!isRecording}
-                                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all group ${!isRecording ? "bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed" :
-                                            isPaused ? "bg-amber-50 border-amber-200 hover:bg-amber-100" : "bg-blue-50 border-blue-200 hover:bg-blue-100"
-                                        }`}
-                                >
-                                    <span className="text-3xl mb-1 group-hover:scale-110 transition-transform">
-                                        {isPaused ? "▶️" : "⏸️"}
-                                    </span>
-                                    <span className={`text-[10px] font-bold uppercase ${isPaused ? "text-amber-600" : "text-blue-600"}`}>
-                                        {isPaused ? "Resume" : "Pause"}
-                                    </span>
-                                </button>
-
-                                {/* Transcribe Button (Backend) */}
-                                <button
-                                    onClick={handleTranscribeAction}
-                                    disabled={!audioBlob || isBackendTranscribing || isRecording}
-                                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all group col-span-1 ${!audioBlob || isBackendTranscribing || isRecording ? "bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed" :
-                                            "bg-purple-50 border-purple-200 hover:bg-purple-100"
-                                        }`}
-                                >
-                                    <span className="text-3xl mb-1 group-hover:scale-110 transition-transform">
-                                        {isBackendTranscribing ? "⏳" : "🔍"}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-purple-600 uppercase">
-                                        {isBackendTranscribing ? "Transcribing..." : "Transcribe"}
-                                    </span>
-                                </button>
-
-                                {/* Generate Button (Text-to-JSON) */}
-                                <button
-                                    onClick={handleGenerateFromTranscript}
-                                    disabled={!transcript || loading || isBackendTranscribing || isRecording}
-                                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all group col-span-1 ${!transcript || loading || isBackendTranscribing || isRecording ? "bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed" :
-                                            "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
-                                        }`}
-                                >
-                                    <span className="text-3xl mb-1 group-hover:scale-110 transition-transform">
-                                        {loading ? "⚙️" : "✨"}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-emerald-600 uppercase">
-                                        {loading ? "Adding..." : "Generate"}
-                                    </span>
-                                </button>
-                            </div>
-
-                            {/* Progress Feedback */}
-                            <div className="mt-8 px-8 w-full text-center">
-                                {isRecording && (
-                                    <div className="flex items-center justify-center gap-2 text-red-500 font-bold text-xs animate-pulse">
-                                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                        {isPaused ? "PAUSED" : "RECORDING LIVE"}
-                                    </div>
-                                )}
-
-                                {isBackendTranscribing && (
-                                    <div className="space-y-2">
-                                        <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                                            <div className="bg-purple-500 h-full animate-progress" style={{ width: '40%' }}></div>
-                                        </div>
-                                        <p className="text-[10px] text-purple-600 font-bold uppercase">Backend is transcribing with Whisper...</p>
-                                    </div>
-                                )}
-
-                                {transcript && !isBackendTranscribing && (
-                                    <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 shadow-inner">
-                                        <div className="text-[8px] text-gray-400 font-bold uppercase mb-1">Transcript</div>
-                                        <p className="text-sm italic text-gray-600 leading-snug">"{transcript}"</p>
-                                        <button onClick={clearTranscript} className="mt-2 text-[10px] text-gray-400 hover:text-red-500 uppercase font-black">Clear All</button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ─── SINGLE TICKET OUTPUT (text + voice mode) ─── */}
-                    {ticket && (mode === "text" || mode === "voice") && (
-                        <div className="mt-6 border-t pt-4 text-sm text-gray-700 space-y-2">
-                            <p><b>Name:</b> {ticket.name}</p>
-                            <p><b>Email:</b> {ticket.email}</p>
-                            <p><b>Phone:</b> {ticket.phone}</p>
-                            <p><b>Issue:</b> {ticket.issue}</p>
-
-                            <div className="flex items-center gap-2">
-                                <b>Category:</b>
-                                <select
-                                    value={selectedCategory}
-                                    onChange={(e) => setSelectedCategory(e.target.value)}
-                                    className="border border-gray-300 rounded-lg px-3 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-400 text-sm"
-                                >
-                                    {categories.map((cat) => (
-                                        <option key={cat} value={cat}>
-                                            {formatCategory(cat)}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ─── OCR + MULTI-TICKET OUTPUT (image mode) ─── */}
-                    {mode === "image" && ocrText && (
-                        <div className="mt-6 border-t pt-4 space-y-4">
-
-                            {/* OCR Raw Text */}
-                            <details className="text-sm">
-                                <summary className="cursor-pointer text-gray-500 font-medium hover:text-gray-700">
-                                    📄 View Extracted OCR Text
-                                </summary>
-                                <pre className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 whitespace-pre-wrap border">
-                                    {ocrText}
-                                </pre>
-                            </details>
-
-                            {/* Tickets */}
-                            <p className="text-sm font-semibold text-gray-700">
-                                🎫 {tickets.length} Ticket{tickets.length !== 1 ? "s" : ""} Detected
-                            </p>
-
-                            {tickets.map((t, idx) => (
-                                <div
-                                    key={idx}
-                                    className="border border-gray-200 rounded-lg p-4 text-sm text-gray-700 space-y-1 bg-gray-50"
-                                >
-                                    <p className="font-semibold text-gray-800 mb-2">
-                                        Ticket #{idx + 1}
-                                    </p>
-                                    <p><b>Name:</b> {t.name || "—"}</p>
-                                    <p><b>Email:</b> {t.email || "—"}</p>
-                                    <p><b>Phone:</b> {t.phone || "—"}</p>
-                                    <p><b>Issue:</b> {t.issue || "—"}</p>
-
-                                    <div className="flex items-center gap-2 pt-1">
-                                        <b>Category:</b>
-                                        <select
-                                            defaultValue={t.category}
-                                            className="border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-400 text-sm"
-                                        >
-                                            {categories.map((cat) => (
-                                                <option key={cat} value={cat}>
-                                                    {formatCategory(cat)}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {t._error && (
-                                        <p className="text-red-500 text-xs mt-1">⚠️ {t._error}</p>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
+                    <div className="flex items-center gap-1">
+                        <button className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"><Settings size={18} /></button>
+                        <button className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"><HelpCircle size={18} /></button>
+                    </div>
                 </div>
-            </div>
+            </header>
 
+            <main className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center">
+                <AnimatePresence mode="wait">
+                    {!mode ? (
+                        <motion.section
+                            key="onboarding"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 1.05 }}
+                            className="max-w-5xl w-full px-8 py-20 flex flex-col items-center"
+                        >
+                            <div className="text-center mb-16 space-y-4">
+                                <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-none">
+                                    Welcome, <span className="text-red-600">{operatorName || 'Partner'}</span>
+                                </h1>
+                                <p className="text-xl text-slate-500 font-medium max-w-2xl mx-auto">
+                                    Ready to streamline your ticket generation? Select a module to start extracting structured insights from any source.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
+                                {menuItems.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => switchMode(item.id)}
+                                        className="group relative bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-red-200/20 hover:-translate-y-2 transition-all duration-300 text-left overflow-hidden h-[360px] flex flex-col justify-end"
+                                    >
+                                        <div className={`absolute top-0 right-0 p-10 opacity-10 group-hover:scale-125 transition-transform duration-500 text-slate-900`}>
+                                            <item.icon size={160} strokeWidth={1} />
+                                        </div>
+
+                                        <div className={`w-16 h-16 ${item.color} rounded-2xl flex items-center justify-center mb-6 shadow-inner`}>
+                                            <item.icon size={28} />
+                                        </div>
+
+                                        <h3 className="text-2xl font-black text-slate-900 mb-2">{item.label}</h3>
+                                        <p className="text-slate-500 font-bold mb-8 text-sm">{item.description}</p>
+                                        <div className="flex items-center gap-2 text-red-600 font-black text-xs uppercase tracking-widest">
+                                            Start Capture <ChevronRight size={14} />
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </motion.section>
+                    ) : (
+                        <motion.section
+                            key="capture-mode"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            className="max-w-4xl w-full px-8 py-10 space-y-8"
+                        >
+                            <div className="flex items-center justify-between">
+                                <button
+                                    onClick={() => setMode(null)}
+                                    className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-slate-600 font-black text-xs uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-all flex items-center gap-2"
+                                >
+                                    ← Back to Hub
+                                </button>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Extraction Mode</span>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-12 rounded-[3rem] border border-slate-200 shadow-2xl relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-12 opacity-5">
+                                    {mode === 'text' && <Type size={140} />}
+                                    {mode === 'image' && <ImageIcon size={140} />}
+                                    {mode === 'voice' && <Mic size={140} />}
+                                </div>
+
+                                <div className="max-w-xl space-y-8 relative z-10">
+                                    <div>
+                                        <h2 className="text-4xl font-black text-slate-900 mb-4">Initialize {mode.charAt(0).toUpperCase() + mode.slice(1)} Mode</h2>
+                                        <p className="text-lg text-slate-500 leading-relaxed font-bold">
+                                            {mode === "text" && "Enter human-written text below to extract structured ticket information."}
+                                            {mode === "image" && "Scan screenshots using GPT-4o Vision for pinpoint OCR accuracy."}
+                                            {mode === "voice" && "Speak naturally into your microphone for automatic structuring."}
+                                        </p>
+                                    </div>
+
+                                    {mode === "text" && (
+                                        <div className="space-y-6">
+                                            <textarea
+                                                rows="6"
+                                                value={message}
+                                                onChange={(e) => setMessage(e.target.value)}
+                                                placeholder="e.g., John Doe reporting a critical bug in the CMS..."
+                                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-8 text-lg font-medium focus:bg-white focus:border-red-200 focus:ring-8 focus:ring-red-50 transition-all outline-none"
+                                            />
+                                            <button
+                                                onClick={handleGenerate}
+                                                disabled={loading || !message.trim()}
+                                                className="h-16 px-10 bg-red-600 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-extrabold text-lg rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-red-200"
+                                            >
+                                                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
+                                                Generate AI Tickets
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {mode === "image" && (
+                                        <div className="space-y-6">
+                                            <div
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="border-3 border-dashed border-slate-200 bg-slate-50/50 hover:bg-red-50/20 hover:border-red-200 rounded-[2.5rem] p-16 text-center cursor-pointer transition-all group"
+                                            >
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleImageUpload}
+                                                    className="hidden"
+                                                />
+                                                <div className="w-20 h-20 bg-white rounded-[1.5rem] shadow-xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
+                                                    <Upload className="w-8 h-8 text-red-600" />
+                                                </div>
+                                                <p className="text-xl font-black text-slate-900">Choose Capture Source</p>
+                                                <p className="text-sm text-slate-400 mt-2 font-bold">Secure GPT-4o Vision Scanning</p>
+                                            </div>
+
+                                            {imagePreview && (
+                                                <div className="relative group rounded-3xl overflow-hidden border-4 border-white shadow-2xl">
+                                                    <img src={imagePreview} alt="Preview" className="w-full aspect-video object-cover" />
+                                                    <div className="absolute inset-0 bg-red-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                                                        <button onClick={() => fileInputRef.current.click()} className="p-4 bg-white rounded-2xl text-red-600 font-bold hover:scale-110 transition-transform shadow-lg"><RefreshCcw size={24} /></button>
+                                                        <button onClick={clearImage} className="p-4 bg-white rounded-2xl text-slate-900 font-bold hover:scale-110 transition-transform shadow-lg"><Trash2 size={24} /></button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <button
+                                                onClick={handleImageGenerate}
+                                                disabled={loading || !imageFile}
+                                                className="h-16 w-full px-10 bg-red-600 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-extrabold text-lg rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-red-200"
+                                            >
+                                                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <ImageIcon className="w-6 h-6" />}
+                                                Start Neural Scan
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {mode === "voice" && (
+                                        <div className="space-y-8">
+                                            <div className="grid grid-cols-2 gap-6">
+                                                <button
+                                                    onClick={isRecording ? stopRecording : startRecording}
+                                                    className={`flex flex-col items-center gap-4 p-8 rounded-[2.5rem] border-3 transition-all group ${isRecording
+                                                        ? "bg-red-50 border-red-200 animate-pulse"
+                                                        : "bg-slate-50 border-slate-100 hover:border-red-200 hover:bg-white"
+                                                        }`}
+                                                >
+                                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all shadow-lg ${isRecording ? "bg-red-600 text-white" : "bg-white text-slate-300 group-hover:bg-red-600 group-hover:text-white"
+                                                        }`}>
+                                                        {isRecording ? <Square fill="currentColor" size={28} /> : <Mic size={28} />}
+                                                    </div>
+                                                    <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-900">
+                                                        {isRecording ? "Terminate" : "Start Mic"}
+                                                    </span>
+                                                </button>
+
+                                                <button
+                                                    onClick={isPaused ? resumeRecording : pauseRecording}
+                                                    disabled={!isRecording}
+                                                    className="flex flex-col items-center gap-4 p-8 rounded-[2.5rem] border-3 border-transparent bg-slate-50 hover:bg-white hover:border-slate-100 transition-all disabled:opacity-30 disabled:grayscale"
+                                                >
+                                                    <div className="w-16 h-16 bg-white rounded-2xl shadow-md flex items-center justify-center text-slate-300">
+                                                        {isPaused ? <Play fill="currentColor" size={28} /> : <Pause fill="currentColor" size={28} />}
+                                                    </div>
+                                                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">
+                                                        {isPaused ? "Resume" : "Pause"}
+                                                    </span>
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-4">
+                                                <button
+                                                    onClick={handleTranscribeAction}
+                                                    disabled={!audioBlob || isBackendTranscribing || isRecording}
+                                                    className="h-16 flex-1 bg-white border-2 border-slate-100 hover:border-red-200 hover:text-red-600 text-slate-600 font-black rounded-2xl transition-all flex items-center justify-center gap-3 disabled:opacity-40 shadow-sm"
+                                                >
+                                                    {isBackendTranscribing ? <Loader2 className="animate-spin w-6 h-6" /> : <Terminal className="w-6 h-6" />}
+                                                    Transcribe
+                                                </button>
+                                                <button
+                                                    onClick={handleGenerateFromTranscript}
+                                                    disabled={!transcript || loading || isRecording}
+                                                    className="h-16 flex-1 bg-red-600 hover:bg-red-700 text-white font-extrabold rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-red-200 disabled:opacity-40"
+                                                >
+                                                    {loading ? <Loader2 className="animate-spin w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
+                                                    Extract
+                                                </button>
+                                            </div>
+
+                                            {transcript && (
+                                                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-8 bg-red-50/30 rounded-[2rem] border-2 border-red-50">
+                                                    <div className="flex justify-between items-center mb-4">
+                                                        <span className="text-[10px] font-black text-red-400 uppercase tracking-[0.2em]">Voice Transcript</span>
+                                                        <button onClick={clearTranscript} className="text-[10px] font-black text-red-500 hover:text-red-700 uppercase">Wipe</button>
+                                                    </div>
+                                                    <p className="text-xl font-bold italic text-slate-700 leading-relaxed underline decoration-red-200 underline-offset-8">"{transcript}"</p>
+                                                </motion.div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Results Section */}
+                            <div className="space-y-8 pb-32">
+                                <div className="flex items-center justify-between border-b-4 border-slate-100 pb-6">
+                                    <h3 className="text-2xl font-black text-slate-900 flex items-center gap-4">
+                                        Extraction Results
+                                        <span className="h-7 px-3 bg-red-600 text-white rounded-full text-[12px] flex items-center font-black shadow-lg shadow-red-200">
+                                            {(ticket ? 1 : 0) + (tickets.length)}
+                                        </span>
+                                    </h3>
+                                </div>
+
+                                {loading && !tickets.length && !ticket && (
+                                    <div className="py-20 text-center space-y-6">
+                                        <div className="relative inline-block scale-150">
+                                            <Loader2 className="w-12 h-12 text-red-600 animate-spin" />
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <Sparkles className="w-4 h-4 text-red-400 animate-pulse" />
+                                            </div>
+                                        </div>
+                                        <p className="text-sm font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Consulting LLM Engine</p>
+                                    </div>
+                                )}
+
+                                <div className="grid gap-8">
+                                    {mode === "image" && ocrText && (
+                                        <details className="group bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                                            <summary className="p-6 cursor-pointer list-none flex items-center gap-4 hover:bg-slate-50 transition-colors">
+                                                <Terminal className="w-5 h-5 text-red-600" />
+                                                <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Neural OCR Dump</span>
+                                                <span className="ml-auto text-slate-400 transition-transform duration-300 group-open:rotate-180">↓</span>
+                                            </summary>
+                                            <div className="p-10 border-t border-slate-100 bg-slate-50/50">
+                                                <pre className="text-sm text-slate-600 font-mono whitespace-pre-wrap leading-relaxed">{ocrText}</pre>
+                                            </div>
+                                        </details>
+                                    )}
+
+                                    {ticket && (mode === "text" || mode === "voice") && (
+                                        <ResultCard
+                                            ticket={ticket}
+                                            categories={categories}
+                                            formatCategory={formatCategory}
+                                            onCategoryChange={(cat) => setTicket({ ...ticket, category: cat })}
+                                        />
+                                    )}
+
+                                    {tickets.map((t, idx) => (
+                                        <ResultCard
+                                            key={idx}
+                                            ticket={t}
+                                            categories={categories}
+                                            formatCategory={formatCategory}
+                                            onCategoryChange={(cat) => {
+                                                const newTickets = [...tickets];
+                                                newTickets[idx].category = cat;
+                                                setTickets(newTickets);
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </motion.section>
+                    )}
+                </AnimatePresence>
+            </main>
         </div>
     );
 }
-
-export default TicketGenerator;
