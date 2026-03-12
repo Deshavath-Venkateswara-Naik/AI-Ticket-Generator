@@ -3,7 +3,4 @@ uvicorn
 openai
 python-dotenv
 python-multipart
-paddlepaddle>=2.5,<3
-paddleocr>=2.7,<3
 Pillow
-numpy

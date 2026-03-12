@@ -1,41 +1,49 @@
-from paddleocr import PaddleOCR
-from PIL import Image
-import numpy as np
+import base64
+import os
 import io
+from openai import OpenAI
+from PIL import Image
+from dotenv import load_dotenv
 
-# Lazy-loaded PaddleOCR instance
-_ocr = None
+load_dotenv()
 
-
-def _get_ocr():
-    global _ocr
-    if _ocr is None:
-        _ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
-    return _ocr
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def extract_text_from_image(image_bytes: bytes) -> str:
-    """Run PaddleOCR on raw image bytes and return the extracted text."""
-    image = Image.open(io.BytesIO(image_bytes))
-    if image.mode != "RGB":
-        image = image.convert("RGB")
+    """Send image to GPT-4o for OCR and return the extracted text."""
+    # Encode image to base64
+    base64_image = base64.b64encode(image_bytes).decode("utf-8")
 
-    img_array = np.array(image)
-    ocr = _get_ocr()
-    result = ocr.ocr(img_array, cls=True)
+    print("\n--- [BACKEND] Extracting Text with GPT-4o Vision ---")
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract all the text from this image. Return just the text content, preserving the layout as much as possible with newlines."},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            },
+                        },
+                    ],
+                }
+            ],
+            max_tokens=1000,
+        )
 
-    # result is a list of pages; each page is a list of line results
-    # each line result is [bbox, (text, confidence)]
-    lines = []
-    if result and result[0]:
-        # Sort by vertical position (top-left y) for reading order
-        sorted_results = sorted(result[0], key=lambda x: x[0][0][1])
-        for line in sorted_results:
-            text = line[1][0]
-            if text.strip():
-                lines.append(text.strip())
-
-    return "\n".join(lines)
+        extracted_text = response.choices[0].message.content
+        print("GPT-4o OCR Complete.")
+        return extracted_text.strip()
+    except Exception as e:
+        print(f"GPT-4o OCR Error: {e}")
+        return ""
 
 
 def split_into_tickets(text: str) -> list[str]:
